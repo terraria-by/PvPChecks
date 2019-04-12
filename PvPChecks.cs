@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Microsoft.Xna.Framework;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -17,7 +18,7 @@ namespace PvPChecks
 
         public override string Name => "PvPChecks";
         public override string Author => "Johuan & Veelnyr";
-        public override string Description => "Bans weapons, buffs, ammunitions, accessories and disables PvPers from using illegitimate stuff.";
+        public override string Description => "Bans weapons, buffs, accessories, projectiles and disables PvPers from using illegitimate stuff.";
         public override Version Version => Assembly.GetExecutingAssembly().GetName().Version;
         public PvPChecks(Main game) : base(game) { }
 
@@ -45,6 +46,7 @@ namespace PvPChecks
             base.Dispose(disposing);
         }
 
+        DateTime[] WarningMsgCooldown = new DateTime[256];
         private void OnPlayerUpdate(object sender, GetDataHandlers.PlayerUpdateEventArgs args)
         {
             TSPlayer player = TShock.Players[args.PlayerId];
@@ -58,9 +60,13 @@ namespace PvPChecks
             {
                 if (player.SelectedItem.type == weapon || player.ItemInHand.type == weapon)
                 {
-                    player.Disable("Used banned weapon in pvp.", DisableFlags.WriteToLog);
-                    player.SendErrorMessage("[i:{0}] {1} cannot be used in PvP. See /pvpitembans.", weapon, TShock.Utils.GetItemById(weapon).Name);
-                    break;
+                    player.Disable("Used banned weapon in pvp.", DisableFlags.None);
+                    if ((DateTime.Now - WarningMsgCooldown[player.Index]).TotalSeconds > 3)
+                    {
+                        player.SendErrorMessage("[i:{0}] {1} cannot be used in PvP. See /pvpitembans.", weapon, TShock.Utils.GetItemById(weapon).Name);
+                        WarningMsgCooldown[player.Index] = DateTime.Now;
+                    }
+                    return;
                 }
             }
 
@@ -71,9 +77,14 @@ namespace PvPChecks
                 {
                     if (player.TPlayer.armor[a].type == armorBan)
                     {
-                        player.Disable("Used banned armor in pvp.", DisableFlags.WriteToLog);
-                        player.SendErrorMessage("[i:{0}] {1} cannot be used in PvP. See /pvpitembans.", armorBan, TShock.Utils.GetItemById(armorBan).Name);
-                        break;
+                        player.Disable("Used banned armor in pvp.", DisableFlags.None);
+                        Console.WriteLine("47: " + player.TPlayer.buffType.Contains(47));
+                        if ((DateTime.Now - WarningMsgCooldown[player.Index]).TotalSeconds > 3)
+                        {
+                            player.SendErrorMessage("[i:{0}] {1} cannot be used in PvP. See /pvpitembans.", armorBan, TShock.Utils.GetItemById(armorBan).Name);
+                            WarningMsgCooldown[player.Index] = DateTime.Now;
+                        }
+                        return;
                     }
                 }
             }
@@ -85,9 +96,13 @@ namespace PvPChecks
                 {
                     if (player.TPlayer.armor[a].type == accBan)
                     {
-                        player.Disable("Used banned armor in pvp.", DisableFlags.WriteToLog);
-                        player.SendErrorMessage("[i:{0}] {1} cannot be used in PvP. See /pvpitembans.", accBan, TShock.Utils.GetItemById(accBan).Name);
-                        break;
+                        player.Disable("Used banned accessory in pvp.", DisableFlags.None);
+                        if ((DateTime.Now - WarningMsgCooldown[player.Index]).TotalSeconds > 3)
+                        {
+                            player.SendErrorMessage("[i:{0}] {1} cannot be used in PvP. See /pvpitembans.", accBan, TShock.Utils.GetItemById(accBan).Name);
+                            WarningMsgCooldown[player.Index] = DateTime.Now;
+                        }
+                        return;
                     }
                 }
             }
@@ -99,9 +114,13 @@ namespace PvPChecks
                 {
                     if (playerbuff == buff)
                     {
-                        player.Disable("Used banned buff.", DisableFlags.WriteToLog);
-                        player.SendErrorMessage(TShock.Utils.GetBuffName(playerbuff) + " cannot be used in PvP. See /pvpbuffbans.");
-                        break;
+                        player.Disable("Used banned buff.", DisableFlags.None);
+                        if ((DateTime.Now - WarningMsgCooldown[player.Index]).TotalSeconds > 3)
+                        {
+                            player.SendErrorMessage(TShock.Utils.GetBuffName(playerbuff) + " cannot be used in PvP. See /pvpbuffbans.");
+                            WarningMsgCooldown[player.Index] = DateTime.Now;
+                        }
+                        return;
                     }
                 }
             }
@@ -112,9 +131,9 @@ namespace PvPChecks
             {
                 if (duplicate.Contains(equip.type))
                 {
-                    player.Disable("Used duplicate accessories.", DisableFlags.WriteToLog);
+                    player.Disable("Used duplicate accessories.", DisableFlags.None);
                     player.SendErrorMessage("Please remove the duplicate accessory for PvP: " + equip.Name);
-                    break;
+                    return;
                 }
                 else if (equip.type != 0)
                 {
@@ -125,7 +144,7 @@ namespace PvPChecks
             //Checks whether the player is using the unobtainable 7th accessory slot
             if (player.TPlayer.armor[9].netID != 0)
             {
-                player.Disable("Used 7th accessory slot.", DisableFlags.WriteToLog);
+                player.Disable("Used 7th accessory slot.", DisableFlags.None);
                 player.SendErrorMessage("The 7th accessory slot cannot be used in PvP.");
             }
         }
@@ -139,7 +158,7 @@ namespace PvPChecks
 
             if (cfg.projBans.Contains(args.Type))
             {
-                player.Disable("Used banned projectile in pvp.", DisableFlags.WriteToLog);
+                player.Disable("Used banned projectile in pvp.", DisableFlags.None);
                 player.SendErrorMessage("You cannot create this projectile in PvP. See /pvpprojbans.");
             }
         }
@@ -190,7 +209,7 @@ namespace PvPChecks
                             break;
                         }
                         cfg.Write(configPath);
-                        args.Player.SendSuccessMessage("Banned {1} in pvp.", i.Name);
+                        args.Player.SendSuccessMessage("Banned {0} in pvp.", i.Name);
                     }
                     else if (foundAddItems.Count == 0)
                     {
@@ -198,9 +217,15 @@ namespace PvPChecks
                     }
                     else
                     {
-                        plr.SendErrorMessage("More than one item found:");
-                        var lines = PaginationTools.BuildLinesFromTerms(foundAddItems.Select(i => i.Name));
-                        lines.ForEach(plr.SendInfoMessage);
+                        IEnumerable<string> itemNames = from foundItem in foundAddItems
+                                                        select TShock.Utils.GetItemById(foundItem.type).Name;
+                        PaginationTools.SendPage(plr, 0, PaginationTools.BuildLinesFromTerms(itemNames),
+                            new PaginationTools.Settings
+                            {
+                                HeaderTextColor = Color.Red,
+                                IncludeFooter = false,
+                                HeaderFormat = "More than one item found:"
+                            });
                     }
                     break;
 
@@ -223,9 +248,15 @@ namespace PvPChecks
                     }
                     else
                     {
-                        plr.SendErrorMessage("More than one item found:");
-                        var lines = PaginationTools.BuildLinesFromTerms(foundDelItems.Select(i => i.Name));
-                        lines.ForEach(plr.SendInfoMessage);
+                        IEnumerable<string> itemNames = from foundItem in foundDelItems
+                                                        select TShock.Utils.GetItemById(foundItem.type).Name;
+                        PaginationTools.SendPage(plr, 0, PaginationTools.BuildLinesFromTerms(itemNames),
+                            new PaginationTools.Settings
+                            {
+                                HeaderTextColor = Color.Red,
+                                IncludeFooter = false,
+                                HeaderFormat = "More than one item found:"
+                            });
                     }
                     break;
 
@@ -259,9 +290,14 @@ namespace PvPChecks
                         }
                         else if (found.Count > 1)
                         {
-                            plr.SendErrorMessage("More than one buff found:");
-                            var lines = PaginationTools.BuildLinesFromTerms(found.Select(w => Lang.GetBuffName(w)));
-                            lines.ForEach(plr.SendInfoMessage);
+                            IEnumerable<string> buffNames = from foundBuff in found select TShock.Utils.GetBuffName(foundBuff);
+                            PaginationTools.SendPage(plr, 0, PaginationTools.BuildLinesFromTerms(buffNames),
+                                new PaginationTools.Settings
+                                {
+                                    HeaderTextColor = Color.Red,
+                                    IncludeFooter = false,
+                                    HeaderFormat = "More than one buff found:"
+                                });
                             return;
                         }
                         addid = found[0];
@@ -286,17 +322,22 @@ namespace PvPChecks
                     int delid;
                     if (!int.TryParse(args.Parameters[1], out delid))
                     {
-                        var found = TShock.Utils.GetBuffByName(args.Parameters[1]);
+                        var found = TShock.Utils.GetBuffByName(args.Parameters[1]).Where(b => cfg.buffBans.Contains(b)).ToList();
                         if (found.Count == 0)
                         {
-                            plr.SendErrorMessage("No buffs found by that name/ID.");
+                            plr.SendErrorMessage("No buffs found by that name/ID in ban list.");
                             return;
                         }
                         else if (found.Count > 1)
                         {
-                            plr.SendErrorMessage("More than one buff found:");
-                            var lines = PaginationTools.BuildLinesFromTerms(found.Select(w => Lang.GetBuffName(w)));
-                            lines.ForEach(plr.SendInfoMessage);
+                            IEnumerable<string> buffNames = from foundBuff in found select TShock.Utils.GetBuffName(foundBuff);
+                            PaginationTools.SendPage(plr, 0, PaginationTools.BuildLinesFromTerms(buffNames),
+                                new PaginationTools.Settings
+                                {
+                                    HeaderTextColor = Color.Red,
+                                    IncludeFooter = false,
+                                    HeaderFormat = "More than one buff found:"
+                                });
                             return;
                         }
                         delid = found[0];
@@ -372,7 +413,7 @@ namespace PvPChecks
                     break;
             }
         }
-        
+
         private void PvPWeaponBans(CommandArgs args)
         {
             int pageNumber;
@@ -394,7 +435,7 @@ namespace PvPChecks
             if (!PaginationTools.TryParsePageNumber(args.Parameters, 0, args.Player, out pageNumber))
                 return;
             IEnumerable<string> buffNames = from buffBan in cfg.buffBans
-                                              select TShock.Utils.GetItemById(buffBan).Name;
+                                            select TShock.Utils.GetItemById(buffBan).Name;
             PaginationTools.SendPage(args.Player, pageNumber, PaginationTools.BuildLinesFromTerms(buffNames),
                 new PaginationTools.Settings
                 {
