@@ -28,7 +28,7 @@ namespace PvPChecks
             GetDataHandlers.PlayerUpdate += OnPlayerUpdate;
             GetDataHandlers.NewProjectile += OnNewProjectile;
 
-            Commands.ChatCommands.Add(new Command(PvPWeaponBans, "pvpitembans"));
+            Commands.ChatCommands.Add(new Command(PvPItemBans, "pvpitembans"));
             Commands.ChatCommands.Add(new Command(PvPBuffBans, "pvpbuffbans"));
             Commands.ChatCommands.Add(new Command(PvPProjBans, "pvpprojbans"));
             Commands.ChatCommands.Add(new Command("pvpchecks.ban", BanItem, "banitem"));
@@ -414,19 +414,24 @@ namespace PvPChecks
             }
         }
 
-        private void PvPWeaponBans(CommandArgs args)
+        private void PvPItemBans(CommandArgs args)
         {
+            List<int> bannedItemsList = new List<int>();
+            bannedItemsList.AddRange(cfg.weaponBans);
+            bannedItemsList.AddRange(cfg.armorBans);
+            bannedItemsList.AddRange(cfg.accsBans);
+
             int pageNumber;
             if (!PaginationTools.TryParsePageNumber(args.Parameters, 0, args.Player, out pageNumber))
                 return;
-            IEnumerable<string> weaponNames = from weaponBan in cfg.weaponBans
-                                              select TShock.Utils.GetItemById(weaponBan).Name;
-            PaginationTools.SendPage(args.Player, pageNumber, PaginationTools.BuildLinesFromTerms(weaponNames),
+            IEnumerable<string> itemNames = from itemBan in bannedItemsList
+                                            select TShock.Utils.GetItemById(itemBan).Name;
+            PaginationTools.SendPage(args.Player, pageNumber, PaginationTools.BuildLinesFromTerms(itemNames, maxCharsPerLine: 75),
                 new PaginationTools.Settings
                 {
-                    HeaderFormat = "The following weapons cannot be used in PvP:",
-                    FooterFormat = "Type /pvpweaponbans {{0}} for more.",
-                    NothingToDisplayString = "There are currently no banned weapons."
+                    HeaderFormat = "The following items cannot be used in PvP:",
+                    FooterFormat = "Type /pvpitembans {0} for more.",
+                    NothingToDisplayString = "There are currently no banned items."
                 });
         }
         private void PvPBuffBans(CommandArgs args)
@@ -435,12 +440,12 @@ namespace PvPChecks
             if (!PaginationTools.TryParsePageNumber(args.Parameters, 0, args.Player, out pageNumber))
                 return;
             IEnumerable<string> buffNames = from buffBan in cfg.buffBans
-                                            select TShock.Utils.GetItemById(buffBan).Name;
-            PaginationTools.SendPage(args.Player, pageNumber, PaginationTools.BuildLinesFromTerms(buffNames),
+                                            select TShock.Utils.GetBuffName(buffBan);
+            PaginationTools.SendPage(args.Player, pageNumber, PaginationTools.BuildLinesFromTerms(buffNames, maxCharsPerLine: 75),
                 new PaginationTools.Settings
                 {
                     HeaderFormat = "The following buffs cannot be used in PvP:",
-                    FooterFormat = "Type /pvpbuffbans {{0}} for more.",
+                    FooterFormat = "Type /pvpbuffbans {0} for more.",
                     NothingToDisplayString = "There are currently no banned buffs."
                 });
         }
@@ -449,11 +454,11 @@ namespace PvPChecks
             int pageNumber;
             if (!PaginationTools.TryParsePageNumber(args.Parameters, 0, args.Player, out pageNumber))
                 return;
-            PaginationTools.SendPage(args.Player, pageNumber, PaginationTools.BuildLinesFromTerms(cfg.projBans),
+            PaginationTools.SendPage(args.Player, pageNumber, PaginationTools.BuildLinesFromTerms(cfg.projBans, maxCharsPerLine: 75),
                 new PaginationTools.Settings
                 {
                     HeaderFormat = "The following projectiles cannot be used in PvP:",
-                    FooterFormat = "Type /pvpprojbans {{0}} for more.",
+                    FooterFormat = "Type /pvpprojbans {0} for more.",
                     NothingToDisplayString = "There are currently no banned projectiles."
                 });
         }
