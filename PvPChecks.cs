@@ -7,277 +7,414 @@ using Terraria;
 using TerrariaApi.Server;
 using TShockAPI;
 
-namespace PvPChecks {
+namespace PvPChecks
+{
     [ApiVersion(2, 1)]
-    public class AntiPvPWeapons : TerrariaPlugin {
-        public Config config;
-        public List<string> weaponbans;
-        public List<int> buffbans;
-        List<int> illegalMeleePrefixes = new List<int>();
-        List<int> illegalRangedPrefixes = new List<int>();
-        List<int> illegalMagicPrefixes = new List<int>();
+    public class PvPChecks : TerrariaPlugin
+    {
+        private string configPath = Path.Combine(TShock.SavePath, "pvpchecks.json");
+        private Config cfg;
 
         public override string Name => "PvPChecks";
-        public override string Author => "Johuan";
-        public override string Description => "Bans Weapons and disables PvPers from using illegitimate stuff.";
+        public override string Author => "Johuan & Veelnyr";
+        public override string Description => "Bans weapons, buffs, ammunitions, accessories and disables PvPers from using illegitimate stuff.";
         public override Version Version => Assembly.GetExecutingAssembly().GetName().Version;
-        
-        public AntiPvPWeapons(Main game) : base(game) {
-        }
+        public PvPChecks(Main game) : base(game) { }
 
-        public override void Initialize() {
-            string path = Path.Combine(TShock.SavePath, "pvpchecks.json");
-            config = Config.Read(path);
-            if (!File.Exists(path))
-                config.Write(path);
-            
-            weaponbans = new List<string>(config.WeaponList);
-            buffbans = new List<int>(config.BuffList);
-
-            illegalMeleePrefixes.AddRange(DataIDs.RangedPrefixIDs);
-            illegalMeleePrefixes.AddRange(DataIDs.MagicPrefixIDs);
-
-            illegalRangedPrefixes.AddRange(DataIDs.MeleePrefixIDs);
-            illegalRangedPrefixes.AddRange(DataIDs.MagicPrefixIDs);
-
-            illegalMagicPrefixes.AddRange(DataIDs.MeleePrefixIDs);
-            illegalMagicPrefixes.AddRange(DataIDs.RangedPrefixIDs);
-
+        public override void Initialize()
+        {
+            cfg = Config.ReadOrCreate(configPath);
             GetDataHandlers.PlayerUpdate += OnPlayerUpdate;
+            GetDataHandlers.NewProjectile += OnNewProjectile;
 
-            Commands.ChatCommands.Add(new Command(PvPWeaponBans, "pvpweaponbans"));
-            Commands.ChatCommands.Add(new Command("pvpchecks.banweapon", BanWeapon, "banweapon"));
+            Commands.ChatCommands.Add(new Command(PvPWeaponBans, "pvpitembans"));
             Commands.ChatCommands.Add(new Command(PvPBuffBans, "pvpbuffbans"));
-            Commands.ChatCommands.Add(new Command("pvpchecks.banbuff", BanBuff, "banbuff"));
+            Commands.ChatCommands.Add(new Command(PvPProjBans, "pvpprojbans"));
+            Commands.ChatCommands.Add(new Command("pvpchecks.ban", BanItem, "banitem"));
+            Commands.ChatCommands.Add(new Command("pvpchecks.ban", BanBuff, "banbuff"));
+            Commands.ChatCommands.Add(new Command("pvpchecks.ban", BanProj, "banproj"));
         }
 
-        protected override void Dispose(bool disposing) {
-            GetDataHandlers.PlayerUpdate -= OnPlayerUpdate;
-
-            string path = Path.Combine(TShock.SavePath, "pvpchecks.json");
-            config.WeaponList = weaponbans.ToArray();
-            config.BuffList = buffbans.ToArray();
-            config.Write(path);
-
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                GetDataHandlers.PlayerUpdate -= OnPlayerUpdate;
+                GetDataHandlers.NewProjectile -= OnNewProjectile;
+            }
             base.Dispose(disposing);
         }
 
-        public void OnPlayerUpdate(object sender, GetDataHandlers.PlayerUpdateEventArgs args) {
+        private void OnPlayerUpdate(object sender, GetDataHandlers.PlayerUpdateEventArgs args)
+        {
             TSPlayer player = TShock.Players[args.PlayerId];
 
             //If the player isn't in pvp or using an item, skip pvp checking
             if (!player.TPlayer.hostile || (args.Control & 32) == 0) return;
+            if (player.HasPermission("pvpchecks.ignore")) return;
 
-            //If the player has this permission, skip pvp checking
-            if (player.HasPermission("pvpchecks.useall")) return;
+            //Check weapon
+            foreach (int weapon in cfg.weaponBans)
+            {
+                if (player.SelectedItem.type == weapon || player.ItemInHand.type == weapon)
+                {
+                    player.Disable("Used banned weapon in pvp.", DisableFlags.WriteToLog);
+                    player.SendErrorMessage("[i:{0}] {1} cannot be used in PvP. See /pvpitembans.", weapon, TShock.Utils.GetItemById(weapon).Name);
+                    break;
+                }
+            }
 
-            //Checks whether a player is using a banned item
-            if (!player.HasPermission("pvpchecks.usebannedweps")) {
-                foreach (string weapon in weaponbans) {
-                    if (player.ItemInHand.Name == weapon || player.SelectedItem.Name == weapon) {
-                        player.Disable("Used banned pvp weapon.", DisableFlags.WriteToLog);
-                        player.SendErrorMessage(weapon + " cannot be used in PvP. See /pvpweaponbans.");
+            //Check armor
+            for (int a = 0; a < 3; a++)
+            {
+                foreach (int armorBan in cfg.armorBans)
+                {
+                    if (player.TPlayer.armor[a].type == armorBan)
+                    {
+                        player.Disable("Used banned armor in pvp.", DisableFlags.WriteToLog);
+                        player.SendErrorMessage("[i:{0}] {1} cannot be used in PvP. See /pvpitembans.", armorBan, TShock.Utils.GetItemById(armorBan).Name);
                         break;
                     }
                 }
             }
 
-            //Checks whether a player has a banned buff
-            if(!player.HasPermission("pvpchecks.usebannedbuffs")) {
-                foreach(int buff in buffbans) {
-                    foreach (int playerbuff in player.TPlayer.buffType) {
-                        if (playerbuff == buff) {
-                            player.Disable("Used banned buff.", DisableFlags.WriteToLog);
-                            player.SendErrorMessage(TShock.Utils.GetBuffName(playerbuff) + " cannot be used in PvP. See /pvpbuffbans.");
-                            break;
-                        }
+            //Check accs
+            for (int a = 3; a < 9; a++)
+            {
+                foreach (int accBan in cfg.accsBans)
+                {
+                    if (player.TPlayer.armor[a].type == accBan)
+                    {
+                        player.Disable("Used banned armor in pvp.", DisableFlags.WriteToLog);
+                        player.SendErrorMessage("[i:{0}] {1} cannot be used in PvP. See /pvpitembans.", accBan, TShock.Utils.GetItemById(accBan).Name);
+                        break;
                     }
                 }
             }
 
-            //Checks whether a player has illegal prefixed items
-            if (!player.HasPermission("pvpchecks.useillegalweps")) {
-                if(player.ItemInHand.maxStack > 1 || player.SelectedItem.maxStack > 1) {
-                    if(player.ItemInHand.prefix != 0 || player.SelectedItem.prefix != 0) {
-                        player.Disable("Used illegal weapon.", DisableFlags.WriteToLog);
-                        player.SendErrorMessage("Illegally prefixed weapons are not allowed in PvP");
-                    }
-                } else if (player.ItemInHand.melee || player.SelectedItem.melee) {
-                    foreach (int prefixes in illegalMeleePrefixes) {
-                        if (player.ItemInHand.prefix == prefixes || player.SelectedItem.prefix == prefixes) {
-                            player.Disable("Used illegal weapon.", DisableFlags.WriteToLog);
-                            player.SendErrorMessage("Illegally prefixed weapons are not allowed in PvP");
-                            break;
-                        }
-                    }
-                } else if (player.ItemInHand.ranged || player.SelectedItem.ranged) {
-                    foreach (int prefixes in illegalRangedPrefixes) {
-                        if (player.ItemInHand.prefix == prefixes || player.SelectedItem.prefix == prefixes) {
-                            player.Disable("Used illegal weapon.", DisableFlags.WriteToLog);
-                            player.SendErrorMessage("Illegally prefixed weapons are not allowed in PvP");
-                            break;
-                        }
-                    }
-                } else if (player.ItemInHand.magic || player.SelectedItem.magic || player.ItemInHand.summon || player.SelectedItem.summon || player.ItemInHand.DD2Summon || player.SelectedItem.DD2Summon) {
-                    foreach (int prefixes in illegalMagicPrefixes) {
-                        if (player.ItemInHand.prefix == prefixes || player.SelectedItem.prefix == prefixes) {
-                            player.Disable("Used illegal weapon.", DisableFlags.WriteToLog);
-                            player.SendErrorMessage("Illegally prefixed weapons are not allowed in PvP");
-                            break;
-                        }
-                    }
-                }
-            }
-
-            //Checks whether a player has prefixed ammo
-            if (!player.HasPermission("pvpchecks.useprefixedammo") && (player.ItemInHand.ranged || player.SelectedItem.ranged)) {
-                foreach (int ammo in DataIDs.ammoIDs) {
-                    foreach (Item inventory in player.TPlayer.inventory) {
-                        if (inventory.netID == ammo && inventory.prefix != 0) {
-                            player.Disable("Used prefixed ammo.", DisableFlags.WriteToLog);
-                            player.SendErrorMessage("Please remove the prefixed ammo for PvP: " + inventory.Name);
-                            break;
-                        }
-                    }
-                }
-            }
-
-            //Checks whether a player is wearing prefixed armour
-            if (!player.HasPermission("pvpchecks.useprefixedarmor")) {
-                for (int index = 0; index < 3; index++) {
-                    if (player.TPlayer.armor[index].prefix != 0) {
-                        player.Disable("Used prefixed armour.", DisableFlags.WriteToLog);
-                        player.SendErrorMessage("Please remove the prefixed armour for PvP: " + player.TPlayer.armor[index].Name);
+            //Checks buffs
+            foreach (int buff in cfg.buffBans)
+            {
+                foreach (int playerbuff in player.TPlayer.buffType)
+                {
+                    if (playerbuff == buff)
+                    {
+                        player.Disable("Used banned buff.", DisableFlags.WriteToLog);
+                        player.SendErrorMessage(TShock.Utils.GetBuffName(playerbuff) + " cannot be used in PvP. See /pvpbuffbans.");
                         break;
                     }
                 }
             }
 
             //Checks whether a player is wearing duplicate accessories/armor
-            //To all you code diggers, the bool in the Dictionary serves no purpose here
-            if (!player.HasPermission("pvpchecks.havedupeaccessories")) {
-                Dictionary<int, bool> duplicate = new Dictionary<int, bool>();
-                foreach (Item equips in player.TPlayer.armor) {
-                    if (duplicate.ContainsKey(equips.netID)) {
-                        player.Disable("Used duplicate accessories.", DisableFlags.WriteToLog);
-                        player.SendErrorMessage("Please remove the duplicate accessory for PvP: " + equips.Name);
-                        break;
-                    } else if (equips.netID != 0) {
-                        duplicate.Add(equips.netID, true);
-                    }
+            List<int> duplicate = new List<int>();
+            foreach (Item equip in player.TPlayer.armor)
+            {
+                if (duplicate.Contains(equip.type))
+                {
+                    player.Disable("Used duplicate accessories.", DisableFlags.WriteToLog);
+                    player.SendErrorMessage("Please remove the duplicate accessory for PvP: " + equip.Name);
+                    break;
+                }
+                else if (equip.type != 0)
+                {
+                    duplicate.Add(equip.type);
                 }
             }
 
             //Checks whether the player is using the unobtainable 7th accessory slot
-            if (!player.HasPermission("pvpchecks.use7thslot")) {
-                if (player.TPlayer.armor[9].netID != 0) {
-                    player.Disable("Used 7th accessory slot.", DisableFlags.WriteToLog);
-                    player.SendErrorMessage("The 7th accessory slot cannot be used in PvP.");
-                }
+            if (player.TPlayer.armor[9].netID != 0)
+            {
+                player.Disable("Used 7th accessory slot.", DisableFlags.WriteToLog);
+                player.SendErrorMessage("The 7th accessory slot cannot be used in PvP.");
             }
         }
 
-        private void BanWeapon(CommandArgs args) {
-            if (args.Parameters.Count >= 2 && (args.Parameters[0] == "add" || args.Parameters[0] == "del")) {
-                string input =  string.Join(" ", args.Parameters.Skip(1).ToArray());
-                string weaponname;
-                
-                List<string> weaponlist = new List<string>();
-                List<Item> foundweapons = TShock.Utils.GetItemByName(input);
+        private void OnNewProjectile(object sender, GetDataHandlers.NewProjectileEventArgs args)
+        {
+            TSPlayer player = TShock.Players[args.Owner];
 
-                foreach (Item item in foundweapons) {
-                    weaponlist.Add(item.Name);
-                }
+            if (!player.TPlayer.hostile) return;
+            if (player.HasPermission("pvpchecks.ignore")) return;
 
-                if (weaponlist.Count < 1) {
-                    args.Player.SendErrorMessage("No items by that name were found.");
-                    return;
-                } else if (weaponlist.Count > 1) {
-                    TShock.Utils.SendMultipleMatchError(args.Player, weaponlist);
-                    return;
-                } else {
-                    weaponname = weaponlist[0];
-                }
-
-                switch (args.Parameters[0]) {
-                    case "add":
-                        weaponbans.Add(weaponname);
-                        args.Player.SendSuccessMessage("Banned " + weaponname + " in pvp.");
-                        break;
-
-                    case "del":
-                        weaponbans.Remove(weaponname);
-                        args.Player.SendSuccessMessage("Unbanned " + weaponname + " in pvp.");
-                        break;
-                }
-            } else {
-                args.Player.SendErrorMessage("Incorrect syntax. /banweapon <add/del> <Weapon Name>");
+            if (cfg.projBans.Contains(args.Type))
+            {
+                player.Disable("Used banned projectile in pvp.", DisableFlags.WriteToLog);
+                player.SendErrorMessage("You cannot create this projectile in PvP. See /pvpprojbans.");
             }
         }
 
-        private void PvPWeaponBans(CommandArgs args) {
-            if (args.Player == null)
+        private void BanItem(CommandArgs args)
+        {
+            TSPlayer plr = args.Player;
+
+            if (args.Parameters.Count != 2)
+            {
+                plr.SendErrorMessage("Usage: /banitem <add/del> <item name/ID>");
                 return;
-            string str = "The following weapons cannot be used in PvP: ";
-            int num = 0;
-            foreach (string weapon in weaponbans) {
-                if (num != 0) str += ", ";
-                str += weapon;
-                ++num;
             }
-            args.Player.SendInfoMessage(str + ".");
-        }
 
-        private void BanBuff(CommandArgs args) {
-            if (args.Parameters.Count == 2) {
-                int buffid;
+            switch (args.Parameters[0].ToLower())
+            {
+                case "add":
+                    List<Item> foundAddItems = TShock.Utils.GetItemByIdOrName(args.Parameters[1]).Where(i => i.ammo == 0).ToList();
 
-                if (!Int32.TryParse(args.Parameters[1], out buffid)) {
-                    List<int> bufflist = new List<int>();
-                    bufflist = TShock.Utils.GetBuffByName(args.Parameters[1]);
+                    if (foundAddItems.Count == 1)
+                    {
+                        Item i = foundAddItems[0];
 
-                    if (bufflist.Count < 1) {
-                        args.Player.SendErrorMessage("No buffs by that name were found.");
-                        return;
-                    } else if (bufflist.Count > 1) {
-                        TShock.Utils.SendMultipleMatchError(args.Player, bufflist.Select(p => TShock.Utils.GetBuffName(p)));
-                        return;
-                    } else {
-                        buffid = bufflist[0];
+                        if (i.accessory)
+                        {
+                            if (!cfg.accsBans.Contains(i.type))
+                            {
+                                cfg.accsBans.Add(i.type);
+                            }
+                        }
+                        else if (i.headSlot >= 0 || i.bodySlot >= 0 || i.legSlot >= 0) //armor
+                        {
+                            if (!cfg.armorBans.Contains(i.type))
+                            {
+                                cfg.armorBans.Add(i.type);
+                            }
+                        }
+                        else if (i.damage > 0) //weapon
+                        {
+                            if (!cfg.weaponBans.Contains(i.type))
+                            {
+                                cfg.weaponBans.Add(i.type);
+                            }
+                        }
+                        else
+                        {
+                            plr.SendErrorMessage("No items found by that name/ID.");
+                            break;
+                        }
+                        cfg.Write(configPath);
+                        args.Player.SendSuccessMessage("Banned {1} in pvp.", i.Name);
                     }
-                }
+                    else if (foundAddItems.Count == 0)
+                    {
+                        plr.SendErrorMessage("No items found by that name/ID.");
+                    }
+                    else
+                    {
+                        plr.SendErrorMessage("More than one item found:");
+                        var lines = PaginationTools.BuildLinesFromTerms(foundAddItems.Select(i => i.Name));
+                        lines.ForEach(plr.SendInfoMessage);
+                    }
+                    break;
 
-                switch(args.Parameters[0]) {
-                    case "add":
-                        buffbans.Add(buffid);
-                        args.Player.SendSuccessMessage("Banned " + TShock.Utils.GetBuffName(buffid) + " in pvp.");
-                        break;
+                case "del":
+                    List<Item> foundDelItems = TShock.Utils.GetItemByIdOrName(args.Parameters[1]).Where(i => (cfg.weaponBans.Contains(i.type) || cfg.accsBans.Contains(i.type) || cfg.armorBans.Contains(i.type)) && i.ammo == 0).ToList();
 
-                    case "del":
-                        buffbans.Remove(buffid);
-                        args.Player.SendSuccessMessage("Unbanned " + TShock.Utils.GetBuffName(buffid) + " in pvp.");
-                        break;
+                    if (foundDelItems.Count == 1)
+                    {
+                        Item i = foundDelItems[0];
 
-                    default:
-                        args.Player.SendErrorMessage("Incorrect syntax. /banbuff <add/del> <Buff Name/id>");
-                        break;
-                }
-            } else {
-                args.Player.SendErrorMessage("Incorrect syntax. /banbuff <add/del> <Buff Name/id>");
+                        if (cfg.weaponBans.Remove(i.type) || cfg.accsBans.Remove(i.type) || cfg.armorBans.Remove(i.type))
+                        {
+                            cfg.Write(configPath);
+                            args.Player.SendSuccessMessage("Unbanned {0} in pvp.", i.Name);
+                        }
+                    }
+                    else if (foundDelItems.Count == 0)
+                    {
+                        plr.SendErrorMessage("No items found by that name/ID in ban list.");
+                    }
+                    else
+                    {
+                        plr.SendErrorMessage("More than one item found:");
+                        var lines = PaginationTools.BuildLinesFromTerms(foundDelItems.Select(i => i.Name));
+                        lines.ForEach(plr.SendInfoMessage);
+                    }
+                    break;
+
+                default:
+                    plr.SendErrorMessage("Invalid syntax! /banitem <add/del> <item name/ID>");
+                    break;
             }
         }
 
-        private void PvPBuffBans(CommandArgs args) {
-            if (args.Player == null)
+        private void BanBuff(CommandArgs args)
+        {
+            TSPlayer plr = args.Player;
+
+            if (args.Parameters.Count != 2)
+            {
+                plr.SendErrorMessage("Usage: /banbuff <add/del> <buff name/ID>");
                 return;
-            string str = "The following buffs cannot be used in PvP: ";
-            int num = 0;
-            foreach (int buff in buffbans) {
-                if (num != 0) str += ", ";
-                str += TShock.Utils.GetBuffName(buff);
-                ++num;
             }
-            args.Player.SendInfoMessage(str + ".");
+
+            switch (args.Parameters[0].ToLower())
+            {
+                case "add":
+                    int addid;
+                    if (!int.TryParse(args.Parameters[1], out addid))
+                    {
+                        var found = TShock.Utils.GetBuffByName(args.Parameters[1]);
+                        if (found.Count == 0)
+                        {
+                            plr.SendErrorMessage("No buffs found by that name/ID.");
+                            return;
+                        }
+                        else if (found.Count > 1)
+                        {
+                            plr.SendErrorMessage("More than one buff found:");
+                            var lines = PaginationTools.BuildLinesFromTerms(found.Select(w => Lang.GetBuffName(w)));
+                            lines.ForEach(plr.SendInfoMessage);
+                            return;
+                        }
+                        addid = found[0];
+                    }
+
+                    if (addid > 0 && addid < Main.maxBuffTypes)
+                    {
+                        if (!cfg.buffBans.Contains(addid))
+                        {
+                            cfg.buffBans.Add(addid);
+                            cfg.Write(configPath);
+                        }
+                        args.Player.SendSuccessMessage("Banned {0} in pvp.", Lang.GetBuffName(addid));
+                    }
+                    else
+                    {
+                        plr.SendErrorMessage("Invalid buff ID.");
+                    }
+                    break;
+
+                case "del":
+                    int delid;
+                    if (!int.TryParse(args.Parameters[1], out delid))
+                    {
+                        var found = TShock.Utils.GetBuffByName(args.Parameters[1]);
+                        if (found.Count == 0)
+                        {
+                            plr.SendErrorMessage("No buffs found by that name/ID.");
+                            return;
+                        }
+                        else if (found.Count > 1)
+                        {
+                            plr.SendErrorMessage("More than one buff found:");
+                            var lines = PaginationTools.BuildLinesFromTerms(found.Select(w => Lang.GetBuffName(w)));
+                            lines.ForEach(plr.SendInfoMessage);
+                            return;
+                        }
+                        delid = found[0];
+                    }
+
+                    if (delid > 0 && delid < Main.maxBuffTypes)
+                    {
+                        if (cfg.buffBans.Contains(delid))
+                        {
+                            cfg.buffBans.Remove(delid);
+                            cfg.Write(configPath);
+                            args.Player.SendSuccessMessage("Unbanned {0} in pvp.", Lang.GetBuffName(delid));
+                            break;
+                        }
+                        plr.SendErrorMessage("No buffs found by that name/ID in ban list.");
+                    }
+                    else
+                    {
+                        plr.SendErrorMessage("Invalid buff ID.");
+                    }
+                    break;
+
+                default:
+                    plr.SendErrorMessage("Invalid syntax! /banbuff <add/del> <buff name/ID>");
+                    break;
+            }
+        }
+
+        private void BanProj(CommandArgs args)
+        {
+            TSPlayer plr = args.Player;
+
+            if (args.Parameters.Count != 2)
+            {
+                plr.SendErrorMessage("Usage: /banproj <add/del> <projectile ID>");
+                return;
+            }
+
+            switch (args.Parameters[0].ToLower())
+            {
+                case "add":
+                    int addid;
+                    if (int.TryParse(args.Parameters[1], out addid) && addid > 0 && addid <= 713)
+                    {
+                        if (!cfg.projBans.Contains(addid))
+                        {
+                            cfg.projBans.Add(addid);
+                            cfg.Write(configPath);
+                        }
+                        args.Player.SendSuccessMessage("Banned projectile {0} in pvp.", addid);
+                        break;
+                    }
+                    plr.SendErrorMessage("Invalid projectile ID.");
+                    break;
+
+                case "del":
+                    int delid;
+                    if (int.TryParse(args.Parameters[1], out delid) && delid > 0 && delid <= 713)
+                    {
+                        if (cfg.projBans.Contains(delid))
+                        {
+                            cfg.projBans.Remove(delid);
+                            cfg.Write(configPath);
+                        }
+                        args.Player.SendSuccessMessage("Unbanned projectile {0} in pvp.", delid);
+                        break;
+                    }
+                    plr.SendErrorMessage("Invalid projectile ID.");
+                    break;
+
+                default:
+                    plr.SendErrorMessage("Invalid syntax! /banproj <add/del> <projectile ID>");
+                    break;
+            }
+        }
+        
+        private void PvPWeaponBans(CommandArgs args)
+        {
+            int pageNumber;
+            if (!PaginationTools.TryParsePageNumber(args.Parameters, 0, args.Player, out pageNumber))
+                return;
+            IEnumerable<string> weaponNames = from weaponBan in cfg.weaponBans
+                                              select TShock.Utils.GetItemById(weaponBan).Name;
+            PaginationTools.SendPage(args.Player, pageNumber, PaginationTools.BuildLinesFromTerms(weaponNames),
+                new PaginationTools.Settings
+                {
+                    HeaderFormat = "The following weapons cannot be used in PvP:",
+                    FooterFormat = "Type /pvpweaponbans {{0}} for more.",
+                    NothingToDisplayString = "There are currently no banned weapons."
+                });
+        }
+        private void PvPBuffBans(CommandArgs args)
+        {
+            int pageNumber;
+            if (!PaginationTools.TryParsePageNumber(args.Parameters, 0, args.Player, out pageNumber))
+                return;
+            IEnumerable<string> buffNames = from buffBan in cfg.buffBans
+                                              select TShock.Utils.GetItemById(buffBan).Name;
+            PaginationTools.SendPage(args.Player, pageNumber, PaginationTools.BuildLinesFromTerms(buffNames),
+                new PaginationTools.Settings
+                {
+                    HeaderFormat = "The following buffs cannot be used in PvP:",
+                    FooterFormat = "Type /pvpbuffbans {{0}} for more.",
+                    NothingToDisplayString = "There are currently no banned buffs."
+                });
+        }
+        private void PvPProjBans(CommandArgs args)
+        {
+            int pageNumber;
+            if (!PaginationTools.TryParsePageNumber(args.Parameters, 0, args.Player, out pageNumber))
+                return;
+            PaginationTools.SendPage(args.Player, pageNumber, PaginationTools.BuildLinesFromTerms(cfg.projBans),
+                new PaginationTools.Settings
+                {
+                    HeaderFormat = "The following projectiles cannot be used in PvP:",
+                    FooterFormat = "Type /pvpprojbans {{0}} for more.",
+                    NothingToDisplayString = "There are currently no banned projectiles."
+                });
         }
     }
 }

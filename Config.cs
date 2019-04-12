@@ -2,30 +2,30 @@
 using System.Collections.Generic;
 using System.IO;
 
-namespace PvPChecks {
-    public class Config {
-        public string[] WeaponList = new string[]
+namespace PvPChecks
+{
+    public class Config
+    {
+        public List<int> weaponBans = new List<int>();
+        public List<int> accsBans = new List<int>();
+        public List<int> armorBans = new List<int>();
+        public List<int> buffBans = new List<int>();
+        public List<int> projBans = new List<int>();
+
+        public static Config ReadOrCreate(string configPath)
         {
-            "Last Prism",
-            "Meowmere",
-            "Nebula Blaze",
-            "S.D.M.G.",
-            "Star Wrath",
-            "Terrarian",
-            "Lunar Flare",
-            "Coin Gun"
-        };
-
-        public int[] BuffList = new int[] { };
-
-        public void Write(string path) {
-            File.WriteAllText(path, JsonConvert.SerializeObject(this, Formatting.Indented));
+            if (File.Exists(configPath))
+            {
+                return JsonConvert.DeserializeObject<Config>(File.ReadAllText(configPath));
+            }
+            var config = new Config();
+            File.WriteAllText(configPath, JsonConvert.SerializeObject(config, Formatting.Indented));
+            return config;
         }
 
-        public static Config Read(string path) {
-            if (!File.Exists(path))
-                return new Config();
-            return JsonConvert.DeserializeObject<Config>(File.ReadAllText(path));
+        public void Write(string path)
+        {
+            File.WriteAllText(path, JsonConvert.SerializeObject(this, Formatting.Indented));
         }
     }
 }
