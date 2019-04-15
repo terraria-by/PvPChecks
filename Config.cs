@@ -11,6 +11,7 @@ namespace PvPChecks
         public List<int> armorBans = new List<int>();
         public List<int> buffBans = new List<int>();
         public List<int> projBans = new List<int>();
+        public bool portalGunBlock = true;
 
         public static Config ReadOrCreate(string configPath)
         {

@@ -52,7 +52,7 @@ namespace PvPChecks
             TSPlayer player = TShock.Players[args.PlayerId];
 
             //If the player isn't in pvp or using an item, skip pvp checking
-            if (!player.TPlayer.hostile || (args.Control & 32) == 0) return;
+            if (!player.TPlayer.hostile || ((args.Control & 32) == 0 && !(player.SelectedItem.type == 3384 || player.ItemInHand.type == 3384))) return;
             if (player.HasPermission("pvpchecks.ignore")) return;
 
             //Check weapon
@@ -146,6 +146,14 @@ namespace PvPChecks
             {
                 player.Disable("Used 7th accessory slot.", DisableFlags.None);
                 player.SendErrorMessage("The 7th accessory slot cannot be used in PvP.");
+                return;
+            }
+
+            //Check Portal Gun
+            if (cfg.portalGunBlock && (player.SelectedItem.type == 3384 || player.ItemInHand.type == 3384))
+            {
+                player.SendErrorMessage("[i:3384] Portal Gun cannot be used in PvP.");
+                WarningMsgCooldown[player.Index] = DateTime.Now;
             }
         }
 
