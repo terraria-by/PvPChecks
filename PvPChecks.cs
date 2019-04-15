@@ -132,7 +132,11 @@ namespace PvPChecks
                 if (duplicate.Contains(equip.type))
                 {
                     player.Disable("Used duplicate accessories.", DisableFlags.None);
-                    player.SendErrorMessage("Please remove the duplicate accessory for PvP: " + equip.Name);
+                    if ((DateTime.Now - WarningMsgCooldown[player.Index]).TotalSeconds > 3)
+                    {
+                        player.SendErrorMessage("Please remove the duplicate accessory for PvP: " + equip.Name);
+                        WarningMsgCooldown[player.Index] = DateTime.Now;
+                    }
                     return;
                 }
                 else if (equip.type != 0)
@@ -145,15 +149,23 @@ namespace PvPChecks
             if (player.TPlayer.armor[9].netID != 0)
             {
                 player.Disable("Used 7th accessory slot.", DisableFlags.None);
-                player.SendErrorMessage("The 7th accessory slot cannot be used in PvP.");
+                if ((DateTime.Now - WarningMsgCooldown[player.Index]).TotalSeconds > 3)
+                {
+                    player.SendErrorMessage("The 7th accessory slot cannot be used in PvP.");
+                    WarningMsgCooldown[player.Index] = DateTime.Now;
+                }
                 return;
             }
 
             //Check Portal Gun
             if (cfg.portalGunBlock && (player.SelectedItem.type == 3384 || player.ItemInHand.type == 3384))
             {
-                player.SendErrorMessage("[i:3384] Portal Gun cannot be used in PvP.");
-                WarningMsgCooldown[player.Index] = DateTime.Now;
+                player.Disable("Used portal gun in pvp.", DisableFlags.None);
+                if ((DateTime.Now - WarningMsgCooldown[player.Index]).TotalSeconds > 3)
+                {
+                    player.SendErrorMessage("[i:3384] Portal Gun cannot be used in PvP.");
+                    WarningMsgCooldown[player.Index] = DateTime.Now;
+                }
             }
         }
 
