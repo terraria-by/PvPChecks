@@ -52,7 +52,7 @@ namespace PvPChecks
             TSPlayer player = TShock.Players[args.PlayerId];
 
             //If the player isn't in pvp or using an item, skip pvp checking
-            if (!player.TPlayer.hostile || ((args.Control & 32) == 0 && !(player.SelectedItem.type == 3384 || player.ItemInHand.type == 3384))) return;
+            if (!player.TPlayer.hostile || (args.Control & 32) == 0) return;
             if (player.HasPermission("pvpchecks.ignore")) return;
 
             //Check weapon
@@ -156,17 +156,6 @@ namespace PvPChecks
                 }
                 return;
             }
-
-            //Check Portal Gun
-            if (cfg.portalGunBlock && (player.SelectedItem.type == 3384 || player.ItemInHand.type == 3384))
-            {
-                player.Disable("Used portal gun in pvp.", DisableFlags.None);
-                if ((DateTime.Now - WarningMsgCooldown[player.Index]).TotalSeconds > 3)
-                {
-                    player.SendErrorMessage("[i:3384] Portal Gun cannot be used in PvP.");
-                    WarningMsgCooldown[player.Index] = DateTime.Now;
-                }
-            }
         }
 
         private void OnNewProjectile(object sender, GetDataHandlers.NewProjectileEventArgs args)
@@ -196,7 +185,7 @@ namespace PvPChecks
             switch (args.Parameters[0].ToLower())
             {
                 case "add":
-                    List<Item> foundAddItems = TShock.Utils.GetItemByIdOrName(args.Parameters[1]).Where(i => i.ammo == 0).ToList();
+                    List<Item> foundAddItems = TShock.Utils.GetItemByIdOrName(args.Parameters[1]).Where(i => i.ammo == 0 || i.type == 3384).ToList();
 
                     if (foundAddItems.Count == 1)
                     {
@@ -216,7 +205,7 @@ namespace PvPChecks
                                 cfg.armorBans.Add(i.type);
                             }
                         }
-                        else if (i.damage > 0) //weapon
+                        else if (i.damage > 0 || i.type == 3384) //weapon
                         {
                             if (!cfg.weaponBans.Contains(i.type))
                             {
