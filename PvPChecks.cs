@@ -52,7 +52,7 @@ namespace PvPChecks
             TSPlayer player = TShock.Players[args.PlayerId];
 
             //If the player isn't in pvp or using an item, skip pvp checking
-            if (!player.TPlayer.hostile || (args.Control & 32) == 0) return;
+            if (!player.TPlayer.hostile || !args.Control.IsUsingItem) return; // byDii 32 = IsUsingItem - bitsbyte[5]
             if (player.HasPermission("pvpchecks.ignore")) return;
 
             //Check weapon
