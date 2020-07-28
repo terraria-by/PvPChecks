@@ -1,4 +1,4 @@
-﻿using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -52,13 +52,17 @@ namespace PvPChecks
             TSPlayer player = TShock.Players[args.PlayerId];
 
             //If the player isn't in pvp or using an item, skip pvp checking
-            if (!player.TPlayer.hostile || !args.Control.IsUsingItem) return; // byDii 32 = IsUsingItem - bitsbyte[5]
+			
+			// You announced the use of the item, but the armor is checked after.
+			// I've moved the item use check to where it should be.
+            
+			if (!player.TPlayer.hostile) return; // byDii 32 = IsUsingItem - bitsbyte[5]
             if (player.HasPermission("pvpchecks.ignore")) return;
 
             //Check weapon
             foreach (int weapon in cfg.weaponBans)
             {
-                if (player.SelectedItem.type == weapon || player.ItemInHand.type == weapon)
+                if ((player.SelectedItem.type == weapon || player.ItemInHand.type == weapon) && args.Control.IsUsingItem)
                 {
                     player.Disable("Used banned weapon in pvp.", DisableFlags.None);
                     if ((DateTime.Now - WarningMsgCooldown[player.Index]).TotalSeconds > 3)
