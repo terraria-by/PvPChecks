@@ -25,8 +25,10 @@ namespace PvPChecks
         public override void Initialize()
         {
             cfg = Config.ReadOrCreate(configPath);
+			
             GetDataHandlers.PlayerUpdate += OnPlayerUpdate;
             GetDataHandlers.NewProjectile += OnNewProjectile;
+			GetDataHandlers.Teleport += OnTeleport;
 
             Commands.ChatCommands.Add(new Command(PvPItemBans, "pvpitembans"));
             Commands.ChatCommands.Add(new Command(PvPBuffBans, "pvpbuffbans"));
@@ -42,6 +44,7 @@ namespace PvPChecks
             {
                 GetDataHandlers.PlayerUpdate -= OnPlayerUpdate;
                 GetDataHandlers.NewProjectile -= OnNewProjectile;
+				GetDataHandlers.Teleport -= OnTeleport;
             }
             base.Dispose(disposing);
         }
@@ -94,7 +97,7 @@ namespace PvPChecks
             }
 
             //Check accs
-            for (int a = 3; a < 9; a++)
+            for (int a = 3; a < 10; a++)
             {
                 foreach (int accBan in cfg.accsBans)
                 {
@@ -148,9 +151,9 @@ namespace PvPChecks
                     duplicate.Add(equip.type);
                 }
             }
-
-            //Checks whether the player is using the unobtainable 7th accessory slot
-            if (player.TPlayer.armor[9].netID != 0)
+			
+			// Not requiered
+            /*if (player.TPlayer.armor[9].netID != 0)
             {
                 player.Disable("Used 7th accessory slot.", DisableFlags.None);
                 if ((DateTime.Now - WarningMsgCooldown[player.Index]).TotalSeconds > 3)
@@ -159,7 +162,7 @@ namespace PvPChecks
                     WarningMsgCooldown[player.Index] = DateTime.Now;
                 }
                 return;
-            }
+            }*/
         }
 
         private void OnNewProjectile(object sender, GetDataHandlers.NewProjectileEventArgs args)
@@ -173,8 +176,20 @@ namespace PvPChecks
             {
                 player.Disable("Used banned projectile in pvp.", DisableFlags.None);
                 player.SendErrorMessage("You cannot create this projectile in PvP. See /pvpprojbans.");
+				args.Player.RemoveProjectile(args.Identity, args.Owner);
+				args.Handled = true;
             }
         }
+		
+		private void OnTeleport(object sender, GetDataHandlers.TeleportEventArgs args)
+		{
+			if (!args.Player.TPlayer.hostile) return;
+			if (args.Player.HasPermission("pvpchecks.ignore")) return;
+			
+			args.Player.Disable("Used teleporting in pvp.", DisableFlags.None);
+			args.Player.Teleport(args.Player.TPlayer.position.X, args.Player.TPlayer.position.Y);
+			args.Player.SendErrorMessage("You can't teleport in pvp.");
+		}
 
         private void BanItem(CommandArgs args)
         {
@@ -224,21 +239,20 @@ namespace PvPChecks
                         cfg.Write(configPath);
                         args.Player.SendSuccessMessage("Banned {0} in pvp.", i.Name);
                     }
-                    else if (foundAddItems.Count == 0)
+                    else if (foundAddItems.Count > 1)
                     {
-                        plr.SendErrorMessage("No items found by that name/ID.");
+						IEnumerable<string> itemNames = from foundItem in foundAddItems select TShock.Utils.GetItemById(foundItem.type).Name;
+						PaginationTools.SendPage(plr, 0, PaginationTools.BuildLinesFromTerms(itemNames),
+						new PaginationTools.Settings
+                        {
+                            HeaderTextColor = Color.Red,
+                            IncludeFooter = false,
+                            HeaderFormat = "More than one item found:"
+                        });
                     }
                     else
                     {
-                        IEnumerable<string> itemNames = from foundItem in foundAddItems
-                                                        select TShock.Utils.GetItemById(foundItem.type).Name;
-                        PaginationTools.SendPage(plr, 0, PaginationTools.BuildLinesFromTerms(itemNames),
-                            new PaginationTools.Settings
-                            {
-                                HeaderTextColor = Color.Red,
-                                IncludeFooter = false,
-                                HeaderFormat = "More than one item found:"
-                            });
+                        plr.SendErrorMessage("No items found by that name/ID.");
                     }
                     break;
 
@@ -255,21 +269,20 @@ namespace PvPChecks
                             args.Player.SendSuccessMessage("Unbanned {0} in pvp.", i.Name);
                         }
                     }
-                    else if (foundDelItems.Count == 0)
+                    else if (foundDelItems.Count > 1)
                     {
-                        plr.SendErrorMessage("No items found by that name/ID in ban list.");
+						IEnumerable<string> itemNames = from foundItem in foundDelItems select TShock.Utils.GetItemById(foundItem.type).Name;
+                        PaginationTools.SendPage(plr, 0, PaginationTools.BuildLinesFromTerms(itemNames),
+                        new PaginationTools.Settings
+                        {
+                            HeaderTextColor = Color.Red,
+                            IncludeFooter = false,
+                            HeaderFormat = "More than one item found:"
+                        });
                     }
                     else
                     {
-                        IEnumerable<string> itemNames = from foundItem in foundDelItems
-                                                        select TShock.Utils.GetItemById(foundItem.type).Name;
-                        PaginationTools.SendPage(plr, 0, PaginationTools.BuildLinesFromTerms(itemNames),
-                            new PaginationTools.Settings
-                            {
-                                HeaderTextColor = Color.Red,
-                                IncludeFooter = false,
-                                HeaderFormat = "More than one item found:"
-                            });
+                        plr.SendErrorMessage("No items found by that name/ID in ban list.");
                     }
                     break;
 
@@ -393,7 +406,7 @@ namespace PvPChecks
             {
                 case "add":
                     int addid;
-                    if (int.TryParse(args.Parameters[1], out addid) && addid > 0 && addid <= 713)
+                    if (int.TryParse(args.Parameters[1], out addid) && addid > 0 && addid <= 950)
                     {
                         if (!cfg.projBans.Contains(addid))
                         {
@@ -408,7 +421,7 @@ namespace PvPChecks
 
                 case "del":
                     int delid;
-                    if (int.TryParse(args.Parameters[1], out delid) && delid > 0 && delid <= 713)
+                    if (int.TryParse(args.Parameters[1], out delid) && delid > 0 && delid <= 950)
                     {
                         if (cfg.projBans.Contains(delid))
                         {
